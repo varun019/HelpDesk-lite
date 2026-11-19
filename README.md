@@ -114,6 +114,7 @@ All REST endpoints are under `/api`. Authentication is stored in an HTTP-only `t
 | `GET` | `/api/tickets` | Authenticated | List tickets; employees only see their own. Supports `page`, `limit`, `search`, `status`, and `priority` query parameters |
 | `GET` | `/api/tickets/:id` | Authenticated | Get ticket details |
 | `POST` | `/api/tickets` | Employee | Create a ticket |
+| `DELETE` | `/api/tickets/:id` | Employee owner, while ticket is open | Delete one of the employee's own open tickets |
 | `PATCH` | `/api/tickets/:id/assign` | Agent, admin | Assign a ticket to the current agent |
 | `PATCH` | `/api/tickets/:id/status` | Agent, admin | Change ticket status |
 | `POST` | `/api/tickets/:id/comments` | Authenticated | Add a comment |

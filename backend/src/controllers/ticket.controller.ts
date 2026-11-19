@@ -298,3 +298,39 @@ export const addTicketComment = async (req: Request, res: Response) => {
     });
   }
 };
+
+export const deleteTicket = async (req: Request, res: Response) => {
+  if (!req.user || req.user.role !== "employee") {
+    res.status(403).json({ success: false, message: "Only employees can delete tickets." });
+    return;
+  }
+
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    res.status(404).json({ success: false, message: "Ticket not found." });
+    return;
+  }
+
+  try {
+    const ticket = await Ticket.findOneAndDelete({
+      _id: req.params.id,
+      createdBy: req.user._id,
+      status: "open",
+    });
+
+    if (!ticket) {
+      const ownedTicket = await Ticket.findOne({ _id: req.params.id, createdBy: req.user._id }).select("status");
+      if (!ownedTicket) {
+        res.status(404).json({ success: false, message: "Ticket not found." });
+        return;
+      }
+
+      res.status(409).json({ success: false, message: "Only open tickets can be deleted." });
+      return;
+    }
+
+    getSocketServer()?.to(`ticket:${ticket._id}`).emit("ticket:deleted", { ticketId: ticket._id.toString() });
+    res.status(200).json({ success: true, message: "Ticket deleted successfully." });
+  } catch {
+    res.status(500).json({ success: false, message: "Unable to delete ticket." });
+  }
+};

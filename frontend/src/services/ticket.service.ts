@@ -58,3 +58,7 @@ export const addTicketComment = async (
   );
   return response.data.ticket;
 };
+
+export const deleteTicket = async (ticketId: string) => {
+  await api.delete(`/tickets/${ticketId}`);
+};

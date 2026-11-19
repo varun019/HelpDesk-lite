@@ -10,6 +10,7 @@ import {
   assignTicket,
   updateTicketStatus,
   addTicketComment,
+  deleteTicket,
 } from "../controllers/ticket.controller";
 
 const router = Router();
@@ -47,6 +48,14 @@ router.post(
   "/:id/comments",
   authMiddleware,
   addTicketComment
+);
+
+// Employees may delete their own tickets only while they are open.
+router.delete(
+  "/:id",
+  authMiddleware,
+  roleMiddleware("employee"),
+  deleteTicket
 );
 
 export default router;

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Send, UserRoundCheck, LoaderCircle } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, Send, UserRoundCheck, LoaderCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { io } from "socket.io-client";
+import { Dialog } from "@base-ui/react/dialog";
 import { useAuth } from "@/hooks/useAuth";
 import type { Ticket, TicketStatus } from "@/types/ticket.types";
-import { addTicketComment, assignTicketToMe, getTicketById, updateTicketStatus } from "@/services/ticket.service";
+import { addTicketComment, assignTicketToMe, deleteTicket as deleteTicketRequest, getTicketById, updateTicketStatus } from "@/services/ticket.service";
 import TicketPriorityBadge from "@/components/tickets/TicketPriorityBadge";
 import TicketStatusBadge from "@/components/tickets/TicketStatusBadge";
 import { ErrorState, LoadingState } from "@/common/PageState";
@@ -13,12 +14,15 @@ import { Select } from "@/components/ui/select";
 
 export default function TicketDetails() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [error, setError] = useState("");
 
   const canManage = user?.role === "agent" || user?.role === "admin";
@@ -57,10 +61,15 @@ export default function TicketDetails() {
         return { ...current, comments: [...current.comments, update.comment] };
       });
     });
+    socket.on("ticket:deleted", (update: { ticketId: string }) => {
+      if (update.ticketId !== id) return;
+      toast.info("This ticket was deleted.");
+      navigate("/tickets", { replace: true });
+    });
 
     if (socket.connected) joinTicketRoom();
     return () => { socket.disconnect(); };
-  }, [id]);
+  }, [id, navigate]);
 
   const handleAssign = async () => {
     try {
@@ -99,10 +108,26 @@ export default function TicketDetails() {
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      await deleteTicketRequest(id);
+      toast.success("Ticket deleted.");
+      navigate("/tickets", { replace: true });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Unable to delete ticket.");
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+    }
+  };
+
   if (loading) return <LoadingState label="Loading ticket..." />;
   if (error || !ticket) {
     return <ErrorState message={error || "Ticket not found."} onRetry={loadTicket} />;
   }
+
+  const canDelete = user?.role === "employee" && ticket.createdBy?._id === user._id && ticket.status === "open";
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -138,20 +163,47 @@ export default function TicketDetails() {
             Assigned to: <strong>{ticket.assignedTo?.name || "Unassigned"}</strong>
           </div>
 
-          {canManage && (
+          {(canManage || canDelete) && (
             <div className="flex flex-wrap gap-2">
-              {!ticket.assignedTo && (
+              {canManage && !ticket.assignedTo && (
                 <button onClick={handleAssign} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">
                   <UserRoundCheck size={16} /> Assign to me
                 </button>
               )}
 
-              <Select
+              {canManage && <Select
                 value={ticket.status}
                 onValueChange={(value) => handleStatus(value as TicketStatus)}
                 className="h-10"
                 options={[{ value: "open", label: "Open" }, { value: "in_progress", label: "In Progress" }, { value: "resolved", label: "Resolved" }, { value: "closed", label: "Closed" }]}
-              />
+              />}
+              {canDelete && (
+                <Dialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                  <Dialog.Trigger
+                    type="button"
+                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 size={16} /> Delete ticket
+                  </Dialog.Trigger>
+                  <Dialog.Portal>
+                    <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/40 transition-opacity data-ending-style:opacity-0 data-starting-style:opacity-0" />
+                    <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-white p-6 shadow-xl outline-none data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0">
+                      <Dialog.Title className="text-lg font-semibold text-slate-900">Delete this ticket?</Dialog.Title>
+                      <Dialog.Description className="mt-2 text-sm text-slate-600">
+                        This will permanently delete “{ticket.title}” and its comments. This action cannot be undone.
+                      </Dialog.Description>
+                      <div className="mt-6 flex justify-end gap-3">
+                        <Dialog.Close type="button" disabled={deleting} className="rounded-lg border px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                          Cancel
+                        </Dialog.Close>
+                        <button type="button" onClick={handleDelete} disabled={deleting} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60">
+                          {deleting ? "Deleting..." : "Delete ticket"}
+                        </button>
+                      </div>
+                    </Dialog.Popup>
+                  </Dialog.Portal>
+                </Dialog.Root>
+              )}
             </div>
           )}
         </div>
